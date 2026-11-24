@@ -149,4 +149,8 @@ See `docs/SECURITY_CHECKLIST.md` for the full 19-check evaluation.
 
 ## License
 
-Proprietary. All rights reserved.
+MIT License — see LICENSE file.
+
+> **Note:** This project was built for practice and learning purposes.
+> If you'd like to use it, adapt it, or collaborate, feel free to reach out:
+> **aayushr7777@gmail.com**
