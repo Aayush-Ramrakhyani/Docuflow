@@ -1,0 +1,22 @@
+# Dependencies — installed fresh inside the image, never copy host copy
+node_modules/
+
+# Build output
+dist/
+.vite/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# VCS / editor
+.git/
+.gitignore
+*.swp
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*

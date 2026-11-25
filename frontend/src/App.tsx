@@ -4,7 +4,7 @@
  * All other routes require authentication + org context.
  */
 
-import { useEffect } from "react";
+import { lazy, Suspense } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -16,15 +16,40 @@ import { useQuery } from "@tanstack/react-query";
 import { authApi } from "@/api/auth";
 import { useAuthStore } from "@/stores/auth-store";
 import { AppShell } from "@/components/layout/AppShell";
+
+// Auth pages are small and on the critical path — load eagerly.
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { RegisterPage } from "@/pages/auth/RegisterPage";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
-import { DashboardPage } from "@/pages/dashboard/DashboardPage";
-import { DocumentsPage } from "@/pages/documents/DocumentsPage";
-import { DocumentReviewPage } from "@/pages/documents/DocumentReviewPage";
-import { AnalyticsPage } from "@/pages/analytics/AnalyticsPage";
-import { TeamPage } from "@/pages/team/TeamPage";
-import { SettingsPage } from "@/pages/settings/SettingsPage";
+
+// App pages are code-split — heavy deps (recharts, react-pdf) load only when
+// the route is visited, keeping the initial bundle small.
+const DashboardPage = lazy(() =>
+  import("@/pages/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage }))
+);
+const DocumentsPage = lazy(() =>
+  import("@/pages/documents/DocumentsPage").then((m) => ({ default: m.DocumentsPage }))
+);
+const DocumentReviewPage = lazy(() =>
+  import("@/pages/documents/DocumentReviewPage").then((m) => ({ default: m.DocumentReviewPage }))
+);
+const AnalyticsPage = lazy(() =>
+  import("@/pages/analytics/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage }))
+);
+const TeamPage = lazy(() =>
+  import("@/pages/team/TeamPage").then((m) => ({ default: m.TeamPage }))
+);
+const SettingsPage = lazy(() =>
+  import("@/pages/settings/SettingsPage").then((m) => ({ default: m.SettingsPage }))
+);
+
+function PageFallback() {
+  return (
+    <div className="flex h-full min-h-[50vh] items-center justify-center">
+      <div className="text-slate-400 text-sm animate-pulse">Loading…</div>
+    </div>
+  );
+}
 
 function AuthInitializer({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, setAuth, logout } = useAuthStore();
@@ -93,9 +118,17 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           </Route>
 
-          {/* Protected app routes */}
+          {/* Protected app routes — lazy chunks share one Suspense fallback */}
           <Route element={<ProtectedRoute />}>
-            <Route element={<AppShell />}>
+            <Route
+              element={
+                <AppShell>
+                  <Suspense fallback={<PageFallback />}>
+                    <Outlet />
+                  </Suspense>
+                </AppShell>
+              }
+            >
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/documents" element={<DocumentsPage />} />
               <Route path="/documents/:documentId/review" element={<DocumentReviewPage />} />

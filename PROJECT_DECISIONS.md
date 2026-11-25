@@ -1,4 +1,4 @@
-# DocuFlow — Project Decisions Log
+ # DocuFlow — Project Decisions Log
 
 This file is the permanent technical decision log for DocuFlow. Every significant architectural, security, or product decision must be recorded here. Read this before making architectural changes.
 

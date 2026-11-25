@@ -1,0 +1,32 @@
+# Python caches & build artifacts — never copy into the image
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Virtualenvs — would bloat the image and may contain host-specific binaries
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Tests & dev-only files (not needed in runtime image)
+tests/
+
+# VCS / editor
+.git/
+.gitignore
+*.swp
+.idea/
+.vscode/
+
+# Local DB/volume data
+*.log

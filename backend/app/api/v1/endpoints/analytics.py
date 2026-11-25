@@ -24,16 +24,8 @@ async def get_overview(
 ):
     """Dashboard KPIs: total documents, processing status breakdown, extraction stats."""
 
-    # Total documents
-    total_docs = (
-        await db.execute(
-            select(func.count()).select_from(Document).where(
-                Document.organization_id == organization_id
-            )
-        )
-    ).scalar_one()
-
-    # Documents by status
+    # Documents by status — total is derived by summing this, avoiding a
+    # separate COUNT(*) over the whole documents table.
     status_rows = (
         await db.execute(
             select(Document.status, func.count().label("count"))
@@ -42,6 +34,7 @@ async def get_overview(
         )
     ).fetchall()
     status_breakdown = {row.status: row.count for row in status_rows}
+    total_docs = sum(status_breakdown.values())
 
     # Total extractions
     total_extractions = (

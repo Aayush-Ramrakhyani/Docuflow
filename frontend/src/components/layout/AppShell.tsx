@@ -4,13 +4,13 @@
  */
 
 import { Outlet } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sidebar } from "./Sidebar";
 import { useAuthStore } from "@/stores/auth-store";
 import { organizationsApi } from "@/api/organizations";
 
-export function AppShell() {
+export function AppShell({ children }: { children?: ReactNode }) {
   const { currentOrgId, setCurrentOrg } = useAuthStore();
 
   // Auto-select first org if none selected
@@ -29,9 +29,9 @@ export function AppShell() {
     <div className="flex h-screen bg-background overflow-hidden">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
-        <div className="min-h-full">
-          <Outlet />
-        </div>
+        {/* Render explicit children (e.g. a Suspense-wrapped Outlet) when
+            provided; otherwise fall back to the router Outlet. */}
+        <div className="min-h-full">{children ?? <Outlet />}</div>
       </main>
     </div>
   );
