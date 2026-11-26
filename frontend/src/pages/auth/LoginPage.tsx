@@ -1,3 +1,12 @@
+/**
+ * Login page.
+ *
+ * Split layout: a branding panel (desktop) beside the sign-in form. On success
+ * it stores the user + access token in the auth store, loads the user's orgs,
+ * selects the first one, and routes to the dashboard. Credentials are validated
+ * client-side with Zod before the request is ever sent.
+ */
+
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -32,8 +41,9 @@ export function LoginPage() {
   const loginMutation = useMutation({
     mutationFn: (data: FormData) => authApi.login(data),
     onSuccess: async (res) => {
+      // Access token lives in memory only; refresh token is set as an httpOnly cookie
       setAuth(res.data.user, res.data.access_token);
-      // Fetch orgs and select the first one
+      // Lazy-import orgs API, then default the user into their first organization
       const { organizationsApi } = await import("@/api/organizations");
       const orgsRes = await organizationsApi.listMine();
       if (orgsRes.data.length > 0) {
@@ -42,6 +52,7 @@ export function LoginPage() {
       navigate("/dashboard");
     },
     onError: (err: AxiosError<{ detail: string }>) => {
+      // Show the server's generic "invalid credentials" message (no account enumeration)
       setError("root", {
         message: err.response?.data?.detail ?? "Invalid email or password",
       });

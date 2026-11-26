@@ -1,3 +1,8 @@
+/**
+ * Badge primitive — a small pill for status/labels. Color variants map to
+ * semantic meanings (success/warning/error/info); StatusBadge picks the variant.
+ */
+
 import { type VariantProps, cva } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 

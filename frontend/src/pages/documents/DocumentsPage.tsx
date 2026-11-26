@@ -1,3 +1,11 @@
+/**
+ * Documents page — the library view.
+ *
+ * Drag-and-drop upload zone on top, a searchable/filterable/paginated table
+ * below. The list smart-polls: it only refetches on an interval while at least
+ * one document is still being processed, then goes quiet to save requests.
+ */
+
 import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDropzone } from "react-dropzone";

@@ -41,10 +41,11 @@ interface FieldRowProps {
 }
 
 function FieldRow({ fieldName, value, confidence, corrected, onEdit }: FieldRowProps) {
+  // A human correction, when present, always takes precedence over the AI value
   const displayValue = corrected !== undefined ? corrected : value;
   const level = confidence !== undefined ? getConfidenceLevel(confidence) : null;
-  const isLowConfidence = level === "low";
-  const isCorrected = corrected !== undefined;
+  const isLowConfidence = level === "low";   // Low-confidence rows are highlighted red for review
+  const isCorrected = corrected !== undefined;  // Edited rows are highlighted amber
 
   return (
     <div
@@ -155,6 +156,7 @@ export function DocumentReviewPage() {
     enabled: !!currentOrgId && !!documentId,
   });
 
+  // Signed URL for the viewer — re-fetched before the 1h signature expires
   const { data: signedUrl } = useQuery({
     queryKey: ["document-url", currentOrgId, documentId],
     queryFn: () =>
@@ -162,9 +164,10 @@ export function DocumentReviewPage() {
         .getDownloadUrl(currentOrgId!, documentId!)
         .then((r) => r.data),
     enabled: !!currentOrgId && !!documentId && !!doc,
-    refetchInterval: 50 * 60 * 1000, // Refresh before 1h expiry
+    refetchInterval: 50 * 60 * 1000, // Refresh at 50 min, before the 1h expiry
   });
 
+  // Extraction only exists once processing has produced one — gate the query on status
   const { data: extraction, isLoading: extractionLoading } = useQuery({
     queryKey: ["extraction", currentOrgId, documentId],
     queryFn: () =>
@@ -176,7 +179,7 @@ export function DocumentReviewPage() {
       !!documentId &&
       !!doc &&
       ["review_pending", "approved", "rejected", "processed"].includes(doc.status ?? ""),
-    retry: false,
+    retry: false,  // A missing extraction is expected for some statuses — don't retry
   });
 
   const correctMutation = useMutation({
@@ -212,6 +215,7 @@ export function DocumentReviewPage() {
     },
   });
 
+  // Save a single-field correction — merged server-side with any prior edits
   const handleEditSave = (field: string, value: string) => {
     if (!extraction) return;
     correctMutation.mutate({
@@ -245,9 +249,10 @@ export function DocumentReviewPage() {
     );
   }
 
-  const isProcessing = ["queued", "processing"].includes(doc.status);
-  const canReview = doc.status === "review_pending" && extraction;
-  const isReviewed = ["approved", "rejected"].includes(doc.status);
+  // Derived view state that drives which panels/actions are shown
+  const isProcessing = ["queued", "processing"].includes(doc.status);        // Show spinner
+  const canReview = doc.status === "review_pending" && extraction;           // Show approve/reject
+  const isReviewed = ["approved", "rejected"].includes(doc.status);          // Lock actions
 
   return (
     <div className="flex flex-col h-screen">

@@ -1,3 +1,11 @@
+/**
+ * Dashboard page.
+ *
+ * Landing view after login: four KPI cards, a status pie + document-type bars
+ * (recharts), and a recent-documents table. Pulls from the analytics overview
+ * endpoint plus a small recent-documents query, both gated on a selected org.
+ */
+
 import { useQuery } from "@tanstack/react-query";
 import {
   FileText,
@@ -80,13 +88,15 @@ const STATUS_COLORS: Record<string, string> = {
 export function DashboardPage() {
   const { currentOrgId } = useAuthStore();
 
+  // KPIs + breakdowns for the selected org
   const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ["analytics", "overview", currentOrgId],
     queryFn: () =>
       analyticsApi.getOverview(currentOrgId!).then((r) => r.data),
-    enabled: !!currentOrgId,
+    enabled: !!currentOrgId,  // Don't fire until an org is chosen
   });
 
+  // Small slice of the most recent documents for the table at the bottom
   const { data: recentDocs } = useQuery({
     queryKey: ["documents", currentOrgId, "recent"],
     queryFn: () =>
@@ -96,6 +106,7 @@ export function DashboardPage() {
     enabled: !!currentOrgId,
   });
 
+  // Reshape the status breakdown map into the array recharts expects
   const pieData = overview
     ? Object.entries(overview.status_breakdown).map(([name, value]) => ({
         name,

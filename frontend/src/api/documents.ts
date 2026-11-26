@@ -1,3 +1,10 @@
+/**
+ * Documents & extractions API client.
+ *
+ * Thin typed wrappers over the axios instance. The interfaces mirror the
+ * backend Pydantic response models so components get end-to-end typing.
+ */
+
 import { apiClient } from "./client";
 
 export interface Document {
@@ -43,6 +50,7 @@ export interface Extraction {
 
 export const documentsApi = {
   upload: (orgId: string, file: File) => {
+    // multipart/form-data upload — the raw file, validated server-side by magic bytes
     const formData = new FormData();
     formData.append("file", file);
     return apiClient.post<{ document: Document; job_id: string }>(

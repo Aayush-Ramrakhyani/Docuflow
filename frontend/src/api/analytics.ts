@@ -1,3 +1,7 @@
+/**
+ * Analytics API client — fetches the dashboard/analytics overview for an org.
+ */
+
 import { apiClient } from "./client";
 
 export interface AnalyticsOverview {

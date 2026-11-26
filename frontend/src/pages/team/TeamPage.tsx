@@ -1,3 +1,11 @@
+/**
+ * Team page.
+ *
+ * Lists org members with their roles and lets admins invite/remove them. The UI
+ * hides destructive controls for the owner and for yourself, but the backend
+ * enforces those same rules — this is only a convenience, not the guard.
+ */
+
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { UserPlus, Trash2, Shield } from "lucide-react";
@@ -182,6 +190,7 @@ export function TeamPage() {
                     —
                   </td>
                   <td className="px-5 py-4">
+                    {/* Hide remove for the owner and for yourself (backend enforces this too) */}
                     {m.role !== "owner" && m.user_id !== user?.id && (
                       <Button
                         size="icon-sm"

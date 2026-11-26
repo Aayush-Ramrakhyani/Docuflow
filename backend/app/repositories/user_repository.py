@@ -1,5 +1,9 @@
 """
-User data access. No business logic here — only DB queries.
+User data access layer.
+
+Pure persistence — no business rules, no hashing, no HTTP concerns. Services call
+these methods; the repository just translates them into SQL. Email is always
+normalized (lowercased/trimmed) so lookups are case-insensitive.
 """
 
 import uuid
@@ -20,6 +24,7 @@ class UserRepository:
         return result.scalar_one_or_none()
 
     async def get_by_email(self, email: str) -> User | None:
+        # Normalize before matching so "A@x.com" and "a@x.com " resolve to the same user
         result = await self.db.execute(
             select(User).where(User.email == email.lower().strip())
         )
@@ -35,7 +40,7 @@ class UserRepository:
         result = await self.db.execute(
             select(User).where(
                 User.reset_token == token,
-                User.reset_token_expires_at > datetime.now(UTC),
+                User.reset_token_expires_at > datetime.now(UTC),  # Reject expired tokens at the query level
             )
         )
         return result.scalar_one_or_none()
@@ -43,18 +48,18 @@ class UserRepository:
     async def create(
         self,
         email: str,
-        hashed_password: str,
+        hashed_password: str,  # Caller must pass an already-hashed password
         full_name: str,
         verification_token: str | None = None,
     ) -> User:
         user = User(
-            email=email.lower().strip(),
+            email=email.lower().strip(),  # Store normalized form
             hashed_password=hashed_password,
             full_name=full_name,
             verification_token=verification_token,
         )
         self.db.add(user)
-        await self.db.flush()
+        await self.db.flush()  # Flush to populate user.id without committing
         return user
 
     async def update_last_login(self, user_id: uuid.UUID) -> None:
@@ -65,6 +70,7 @@ class UserRepository:
         )
 
     async def set_verified(self, user_id: uuid.UUID) -> None:
+        # Mark verified AND clear the one-time token so it can't be reused
         await self.db.execute(
             update(User)
             .where(User.id == user_id)
@@ -72,6 +78,7 @@ class UserRepository:
         )
 
     async def set_password(self, user_id: uuid.UUID, hashed_password: str) -> None:
+        # Changing the password also invalidates any outstanding reset token
         await self.db.execute(
             update(User)
             .where(User.id == user_id)
@@ -94,6 +101,7 @@ class UserRepository:
     async def update_profile(
         self, user_id: uuid.UUID, full_name: str | None = None, avatar_url: str | None = None
     ) -> None:
+        # Build a sparse update — only set fields that were actually provided
         values: dict = {}
         if full_name is not None:
             values["full_name"] = full_name

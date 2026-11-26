@@ -52,9 +52,9 @@ export function Sidebar() {
   });
 
   const logoutMutation = useMutation({
-    mutationFn: () => authApi.logout(),
+    mutationFn: () => authApi.logout(),  // Server clears the refresh cookie
     onSuccess: () => {
-      logout();
+      logout();            // Clear in-memory auth state
       navigate("/login");
     },
   });

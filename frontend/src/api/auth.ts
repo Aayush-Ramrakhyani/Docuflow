@@ -1,3 +1,9 @@
+/**
+ * Auth API client — typed wrappers over the /auth endpoints.
+ * The refresh token is handled by the browser via an httpOnly cookie, so it
+ * never appears here; these calls only deal with the access token + user data.
+ */
+
 import { apiClient } from "./client";
 
 export interface AuthResponse {

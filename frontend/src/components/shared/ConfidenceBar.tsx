@@ -1,8 +1,14 @@
+/**
+ * ConfidenceBar — a small horizontal bar + percentage for an AI confidence score.
+ * Color shifts from amber (high/medium) to red (low) to draw the reviewer's eye
+ * to fields that most need checking.
+ */
+
 import { cn, formatConfidence, getConfidenceLevel } from "@/lib/utils";
 
 interface ConfidenceBarProps {
-  score: number;
-  showLabel?: boolean;
+  score: number;              // 0–1 confidence value
+  showLabel?: boolean;        // Whether to render the "87%" text alongside the bar
   className?: string;
 }
 
@@ -11,7 +17,8 @@ export function ConfidenceBar({
   showLabel = true,
   className,
 }: ConfidenceBarProps) {
-  const level = getConfidenceLevel(score);
+  const level = getConfidenceLevel(score);  // high | medium | low → picks the fill + text color
+
   const fillClass = {
     high: "confidence-bar-fill-high",
     medium: "confidence-bar-fill-medium",

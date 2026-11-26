@@ -1,3 +1,11 @@
+/**
+ * Settings page.
+ *
+ * Tabbed container (Profile / Organization / Security). Each tab is a self-
+ * contained section component with its own queries/mutations. The Security tab
+ * mirrors the backend password policy in its Zod schema for instant feedback.
+ */
+
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Key, Webhook, Building2, User, Shield } from "lucide-react";
@@ -12,6 +20,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { AxiosError } from "axios";
 
+// Mirrors the backend password policy; refine() enforces the confirm-match
 const passwordSchema = z
   .object({
     current_password: z.string().min(1, "Required"),
@@ -24,7 +33,7 @@ const passwordSchema = z
   })
   .refine((d) => d.new_password === d.confirm_password, {
     message: "Passwords do not match",
-    path: ["confirm_password"],
+    path: ["confirm_password"],  // Attach the error to the confirm field
   });
 
 type PasswordForm = z.infer<typeof passwordSchema>;

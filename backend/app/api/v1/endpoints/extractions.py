@@ -1,4 +1,10 @@
-"""Extraction review, correction, approval, and rejection endpoints."""
+"""
+Extraction endpoints: list, fetch, correct, approve, reject.
+
+This is the human-in-the-loop review surface. Every route is org-scoped via
+require_member, and every mutating action is written to the audit log. Approve/
+reject also drive the parent document's status.
+"""
 
 from typing import Annotated
 from uuid import UUID
@@ -29,7 +35,7 @@ async def list_extractions(
     db: Annotated[AsyncSession, Depends(get_db)],
     status: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
+    page_size: int = Query(default=20, ge=1, le=100),  # Capped so clients can't request huge pages
 ):
     repo = ExtractionRepository(db)
     offset = (page - 1) * page_size
@@ -51,6 +57,7 @@ async def get_extraction(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     repo = ExtractionRepository(db)
+    # Org-scoped fetch — returns None (→404) for another tenant's extraction
     extraction = await repo.get_by_id(extraction_id, organization_id)
     if not extraction:
         raise HTTPException(status_code=404, detail="Extraction not found")
@@ -64,7 +71,7 @@ async def get_extraction_for_document(
     auth: Annotated[tuple, Depends(require_member)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    # Verify document belongs to org first (IDOR check)
+    # Verify the document belongs to this org first (explicit IDOR check)
     doc_repo = DocumentRepository(db)
     doc = await doc_repo.get_by_id(document_id, organization_id)
     if not doc:
@@ -90,10 +97,10 @@ async def correct_extraction(
     extraction = await repo.get_by_id(extraction_id, organization_id)
     if not extraction:
         raise HTTPException(status_code=404, detail="Extraction not found")
-    if extraction.status == "approved":
+    if extraction.status == "approved":  # Approved data is locked — can't be edited
         raise HTTPException(status_code=409, detail="Cannot correct an approved extraction")
 
-    # Merge corrections with existing corrected_data
+    # Merge new corrections over any prior ones so partial edits accumulate
     existing_corrections = extraction.corrected_data or {}
     merged = {**existing_corrections, **body.corrections}
 
@@ -106,7 +113,7 @@ async def correct_extraction(
         organization_id=organization_id,
         resource_type="extraction",
         resource_id=str(extraction_id),
-        metadata={"fields_corrected": list(body.corrections.keys())},
+        metadata={"fields_corrected": list(body.corrections.keys())},  # Log which fields changed, not values
     )
 
     updated = await repo.get_by_id(extraction_id, organization_id)
@@ -126,12 +133,12 @@ async def approve_extraction(
     extraction = await repo.get_by_id(extraction_id, organization_id)
     if not extraction:
         raise HTTPException(status_code=404, detail="Extraction not found")
-    if extraction.status == "approved":
+    if extraction.status == "approved":  # Idempotency guard against double-approve
         raise HTTPException(status_code=409, detail="Already approved")
 
     await repo.approve(extraction_id, current_user.id, body.notes)
 
-    # Update document status
+    # Approving the extraction promotes the parent document to "approved" too
     doc_repo = DocumentRepository(db)
     await doc_repo.update_status(extraction.document_id, "approved")
 
@@ -164,6 +171,7 @@ async def reject_extraction(
 
     await repo.reject(extraction_id, current_user.id, body.notes)
 
+    # Rejection cascades to the document status as well
     doc_repo = DocumentRepository(db)
     await doc_repo.update_status(extraction.document_id, "rejected")
 
@@ -174,7 +182,7 @@ async def reject_extraction(
         organization_id=organization_id,
         resource_type="extraction",
         resource_id=str(extraction_id),
-        metadata={"reason": body.notes},
+        metadata={"reason": body.notes},  # Capture why it was rejected
     )
 
     updated = await repo.get_by_id(extraction_id, organization_id)

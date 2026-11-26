@@ -1,7 +1,13 @@
+/**
+ * Shared frontend utilities: className merging, date/size/confidence formatting,
+ * and status-color mapping. Pure functions, no side effects — safe to use anywhere.
+ */
+
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { formatDistanceToNow, format } from "date-fns";
 
+// Merge conditional classes and dedupe conflicting Tailwind utilities
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -28,10 +34,11 @@ export function formatConfidence(score: number): string {
   return `${Math.round(score * 100)}%`;
 }
 
+// Bucket a 0–1 confidence score — drives the color coding in the review UI
 export function getConfidenceLevel(score: number): "high" | "medium" | "low" {
-  if (score >= 0.9) return "high";
-  if (score >= 0.7) return "medium";
-  return "low";
+  if (score >= 0.9) return "high";    // Green — trust as-is
+  if (score >= 0.7) return "medium";  // Neutral
+  return "low";                       // Red — flag for human review
 }
 
 export function getStatusColor(status: string): string {

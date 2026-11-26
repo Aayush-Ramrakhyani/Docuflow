@@ -1,4 +1,10 @@
-"""Organization management endpoints."""
+"""
+Organization & membership endpoints.
+
+Read routes require membership; write routes require admin. Member management
+enforces invariants the UI must never be trusted to uphold: the owner can't be
+demoted or removed, and nobody can change/remove their own role.
+"""
 
 from typing import Annotated
 from uuid import UUID
@@ -29,6 +35,7 @@ async def list_my_organizations(
 ):
     """Return all organizations the current user belongs to."""
     repo = OrganizationRepository(db)
+    # Derive orgs from the user's memberships (org is eager-loaded, no N+1)
     memberships = await repo.list_user_memberships(current_user.id)
     return [OrganizationResponse.model_validate(m.organization) for m in memberships]
 
@@ -36,7 +43,7 @@ async def list_my_organizations(
 @router.get("/{organization_id}", response_model=OrganizationResponse)
 async def get_organization(
     organization_id: UUID,
-    auth: Annotated[tuple, Depends(require_member)],
+    auth: Annotated[tuple, Depends(require_member)],  # Must be a member to view
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     repo = OrganizationRepository(db)
@@ -50,10 +57,11 @@ async def get_organization(
 async def update_organization(
     organization_id: UUID,
     body: UpdateOrganizationRequest,
-    auth: Annotated[tuple, Depends(require_admin)],
+    auth: Annotated[tuple, Depends(require_admin)],  # Admin+ only
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     repo = OrganizationRepository(db)
+    # exclude_none → only overwrite fields the client actually sent
     values = body.model_dump(exclude_none=True)
     if values:
         await repo.update(organization_id, **values)
@@ -72,7 +80,7 @@ async def list_members(
     result = []
     for m in memberships:
         resp = MembershipResponse.model_validate(m)
-        if m.user:
+        if m.user:  # Flatten the joined user fields onto the response
             resp.user_email = m.user.email
             resp.user_full_name = m.user.full_name
             resp.user_avatar_url = m.user.avatar_url
@@ -84,7 +92,7 @@ async def list_members(
 async def invite_member(
     organization_id: UUID,
     body: InviteMemberRequest,
-    auth: Annotated[tuple, Depends(require_admin)],
+    auth: Annotated[tuple, Depends(require_admin)],  # Only admins can add members
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     current_user, _ = auth
@@ -93,10 +101,12 @@ async def invite_member(
     user_repo = UserRepository(db)
     org_repo = OrganizationRepository(db)
 
+    # Invitee must already have an account (invite-by-email signup is a later feature)
     invitee = await user_repo.get_by_email(body.email)
     if not invitee:
         raise HTTPException(status_code=404, detail="No user found with that email")
 
+    # Prevent duplicate memberships
     existing = await org_repo.get_membership(organization_id, invitee.id)
     if existing:
         raise HTTPException(status_code=409, detail="User is already a member")
@@ -105,7 +115,7 @@ async def invite_member(
         organization_id=organization_id,
         user_id=invitee.id,
         role=body.role,
-        invited_by_id=current_user.id,
+        invited_by_id=current_user.id,  # Track who invited them
     )
     return {"message": "Member added successfully", "membership_id": str(membership.id)}
 
@@ -124,6 +134,7 @@ async def update_member_role(
     from sqlalchemy import select
     from app.models.organization import OrganizationMembership
 
+    # Fetch scoped to this org so admins can't touch other tenants' memberships
     result = await db.execute(
         select(OrganizationMembership).where(
             OrganizationMembership.id == membership_id,
@@ -134,11 +145,11 @@ async def update_member_role(
     if not membership:
         raise HTTPException(status_code=404, detail="Membership not found")
 
-    # Prevent demoting the owner
+    # Invariant: the owner role is immutable via this endpoint
     if membership.role == "owner":
         raise HTTPException(status_code=403, detail="Cannot change the role of the organization owner")
 
-    # Prevent self-role-change
+    # Invariant: no changing your own role (prevents self-escalation)
     if membership.user_id == current_user.id:
         raise HTTPException(status_code=403, detail="Cannot change your own role")
 
@@ -169,9 +180,11 @@ async def remove_member(
     if not membership:
         raise HTTPException(status_code=404, detail="Membership not found")
 
+    # Invariant: the owner can't be removed (org must always have an owner)
     if membership.role == "owner":
         raise HTTPException(status_code=403, detail="Cannot remove the organization owner")
 
+    # Invariant: can't remove yourself — ownership must be transferred deliberately
     if membership.user_id == current_user.id:
         raise HTTPException(status_code=403, detail="Cannot remove yourself — transfer ownership first")
 

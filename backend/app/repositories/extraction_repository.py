@@ -1,4 +1,9 @@
-"""Extraction data access. All queries scoped to organization_id."""
+"""
+Extraction data access layer.
+
+Stores AI results and the human review lifecycle (correct → approve/reject).
+Like the other repos, every query is org-scoped as an IDOR backstop in front of RLS.
+"""
 
 import uuid
 from datetime import UTC, datetime
@@ -17,6 +22,7 @@ class ExtractionRepository:
     async def get_by_id(
         self, extraction_id: uuid.UUID, organization_id: uuid.UUID
     ) -> Extraction | None:
+        # id + org both required — cross-tenant access is impossible here
         result = await self.db.execute(
             select(Extraction).where(
                 Extraction.id == extraction_id,
@@ -28,6 +34,7 @@ class ExtractionRepository:
     async def get_latest_for_document(
         self, document_id: uuid.UUID, organization_id: uuid.UUID
     ) -> Extraction | None:
+        # A document can be re-processed; return the most recent extraction
         result = await self.db.execute(
             select(Extraction)
             .where(
@@ -50,7 +57,7 @@ class ExtractionRepository:
         count_query = select(func.count()).select_from(Extraction).where(
             Extraction.organization_id == organization_id
         )
-        if status:
+        if status:  # Optional status filter applied to both data + count queries
             query = query.where(Extraction.status == status)
             count_query = count_query.where(Extraction.status == status)
 
@@ -77,7 +84,7 @@ class ExtractionRepository:
             model_used=model_used,
             provider=provider,
             extracted_data=extracted_data,
-            confidence_scores=confidence_scores,
+            confidence_scores=confidence_scores,       # Per-field confidence for the review UI
             overall_confidence=overall_confidence,
             tokens_used=tokens_used,
             processing_time_ms=processing_time_ms,
@@ -93,6 +100,7 @@ class ExtractionRepository:
         reviewer_id: uuid.UUID,
         notes: str | None = None,
     ) -> None:
+        # Store reviewer edits separately from the AI output (original is preserved)
         await self.db.execute(
             update(Extraction)
             .where(Extraction.id == extraction_id)
@@ -110,6 +118,7 @@ class ExtractionRepository:
         reviewer_id: uuid.UUID,
         notes: str | None = None,
     ) -> None:
+        # Human-in-the-loop sign-off — marks the extraction as final/trusted
         await self.db.execute(
             update(Extraction)
             .where(Extraction.id == extraction_id)
@@ -125,7 +134,7 @@ class ExtractionRepository:
         self,
         extraction_id: uuid.UUID,
         reviewer_id: uuid.UUID,
-        notes: str,
+        notes: str,  # Required — a rejection must say why
     ) -> None:
         await self.db.execute(
             update(Extraction)

@@ -1,7 +1,12 @@
+/**
+ * Card primitives — the container surface used across the app, plus matching
+ * Header/Title/Description/Content/Footer slots for consistent padding & borders.
+ */
+
 import { cn } from "@/lib/utils";
 
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "default" | "flat" | "elevated";
+  variant?: "default" | "flat" | "elevated";  // Controls background + shadow depth
 }
 
 export function Card({ className, variant = "default", ...props }: CardProps) {

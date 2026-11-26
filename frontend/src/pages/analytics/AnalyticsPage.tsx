@@ -1,3 +1,11 @@
+/**
+ * Analytics page.
+ *
+ * Deeper view of the same analytics overview the dashboard uses: KPI row plus
+ * two recharts bar charts (documents by status, top document types). All data
+ * comes from one overview query, reshaped client-side for the charts.
+ */
+
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, TrendingUp, FileText, CheckCircle2 } from "lucide-react";
 import { analyticsApi } from "@/api/analytics";
@@ -35,6 +43,7 @@ export function AnalyticsPage() {
     enabled: !!currentOrgId,
   });
 
+  // Status map → bar data, each bar colored by its status
   const statusChartData = overview
     ? Object.entries(overview.status_breakdown).map(([name, value]) => ({
         name: name.replace(/_/g, " "),
@@ -43,6 +52,7 @@ export function AnalyticsPage() {
       }))
     : [];
 
+  // Document types, sorted by frequency, top 8 only
   const typeChartData = overview
     ? Object.entries(overview.document_type_breakdown)
         .sort(([, a], [, b]) => b - a)

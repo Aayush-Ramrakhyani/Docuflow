@@ -1,3 +1,11 @@
+/**
+ * Forgot-password page.
+ *
+ * Always shows the same "check your email" confirmation regardless of whether
+ * the address is registered — this mirrors the backend's anti-enumeration
+ * behavior, so the UI never reveals which emails have accounts.
+ */
+
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,6 +32,7 @@ export function ForgotPasswordPage() {
 
   const mutation = useMutation({
     mutationFn: (data: FormData) => authApi.forgotPassword(data.email),
+    // Backend always returns 200 — success just flips to the confirmation screen
     onSuccess: () => setSubmitted(true),
   });
 

@@ -1,7 +1,12 @@
+/**
+ * Input primitive. Standard text input with amber focus ring and an optional
+ * inline `error` message (also switches the border to red) for form validation.
+ */
+
 import { cn } from "@/lib/utils";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  error?: string;
+  error?: string;  // When set, shows the message and red styling
 }
 
 export function Input({ className, error, ...props }: InputProps) {

@@ -1,6 +1,9 @@
 """
-Document upload, retrieval, deletion, and signed URL generation.
-Authorization is enforced here — never trust caller to pre-check.
+Document service: upload, retrieval, signed URLs, and deletion.
+
+Authorization and quota enforcement live HERE, not in the endpoints — the service
+is the trust boundary. Uploads are validated by magic bytes, stored under UUID
+keys, and handed off to a Celery worker for async AI processing.
 """
 
 import uuid
@@ -37,21 +40,24 @@ class DocumentService:
     ) -> tuple[DocumentResponse, uuid.UUID]:
         """
         Validate, store, and register a document upload.
-        Returns (document, job_id) — the job_id is used to track async processing.
+        Returns (document, job_id) — job_id tracks the async processing task.
         """
         org = await self.orgs.get_by_id(organization_id)
         if not org:
             raise HTTPException(status_code=404, detail="Organization not found")
 
+        # Enforce the plan's document quota before accepting the file
         if org.documents_used >= org.documents_limit:
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
                 detail="Document limit reached for your plan",
             )
 
+        # Validate by magic bytes + size; detected_mime is trusted, client's is not
         content, detected_mime = await validate_upload(file)
         ext = safe_filename_extension(file.filename or "upload")
 
+        # UUID-based storage key — the original filename never touches the path
         storage_key = self.storage.generate_storage_key(organization_id, ext)
         self.storage.upload_file(
             BytesIO(content),
@@ -60,7 +66,7 @@ class DocumentService:
             detected_mime,
         )
 
-        # Safe: original_filename is stored only as display metadata, never used as a path
+        # Keep the original name only as display metadata, capped in length
         safe_display_name = (file.filename or "upload")[:512]
 
         doc = await self.docs.create(
@@ -73,12 +79,12 @@ class DocumentService:
             storage_bucket=settings.S3_BUCKET_DOCUMENTS,
         )
 
-        # Dispatch async processing job
+        # Hand off to the Celery worker — the HTTP request returns without waiting
         from app.workers.document_processor import process_document_task
 
         job_result = process_document_task.delay(str(doc.id), str(organization_id))
 
-        # Record job in DB
+        # Persist a job row so the UI can poll processing status
         from app.models.job import ProcessingJob
 
         job = ProcessingJob(
@@ -109,7 +115,8 @@ class DocumentService:
         document_id: uuid.UUID,
         organization_id: uuid.UUID,
     ) -> SignedUrlResponse:
-        """Generate a short-lived signed URL after verifying ownership."""
+        """Generate a short-lived signed URL AFTER verifying tenant ownership."""
+        # Org-scoped lookup is the authorization check — no doc, no URL
         doc = await self.docs.get_by_id(document_id, organization_id)
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
@@ -132,7 +139,7 @@ class DocumentService:
         page: int = 1,
         page_size: int = 20,
     ) -> DocumentListResponse:
-        offset = (page - 1) * page_size
+        offset = (page - 1) * page_size  # Translate page number to row offset
         docs, total = await self.docs.list(
             organization_id=organization_id,
             status=status,
@@ -146,7 +153,7 @@ class DocumentService:
             total=total,
             page=page,
             page_size=page_size,
-            has_next=(offset + page_size) < total,
+            has_next=(offset + page_size) < total,  # True when more rows remain
         )
 
     async def delete(
@@ -155,11 +162,12 @@ class DocumentService:
         organization_id: uuid.UUID,
         actor_id: uuid.UUID,
     ) -> None:
+        # Verify ownership first
         doc = await self.docs.get_by_id(document_id, organization_id)
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        # Delete from storage first (best-effort; don't fail if already gone)
+        # Remove the blob first; best-effort, so a missing object doesn't block DB cleanup
         self.storage.delete_file(doc.storage_bucket, doc.storage_key)
 
         await self.docs.delete(document_id, organization_id)

@@ -1,6 +1,10 @@
 """
-Auth business logic: register, login, token refresh, password reset.
-No HTTP concerns — called by API routes and can be called from tests directly.
+Authentication business logic: register, login, token refresh, password reset.
+
+No HTTP concerns live here — endpoints are thin wrappers over these methods, and
+tests can call them directly. Two security properties are deliberately engineered:
+  - Login is timing-safe (we hash even when the user doesn't exist).
+  - Password reset never reveals whether an email is registered.
 """
 
 import re
@@ -28,6 +32,7 @@ settings = get_settings()
 
 
 def _generate_org_slug(name: str) -> str:
+    # Slugify the name and append random hex so slugs are unique without a DB check
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return slug[:80] + "-" + secrets.token_hex(4)
 
@@ -47,6 +52,7 @@ class AuthService:
         organization_name: str,
         ip_address: str | None = None,
     ) -> tuple[AuthResponse, str]:
+        # Reject duplicate signups up front
         existing = await self.users.get_by_email(email)
         if existing:
             raise HTTPException(
@@ -54,8 +60,8 @@ class AuthService:
                 detail="An account with this email already exists",
             )
 
-        verification_token = secrets.token_urlsafe(48)
-        hashed = hash_password(password)
+        verification_token = secrets.token_urlsafe(48)  # One-time email-verification token
+        hashed = hash_password(password)                # Never store the raw password
         user = await self.users.create(
             email=email,
             hashed_password=hashed,
@@ -63,6 +69,7 @@ class AuthService:
             verification_token=verification_token,
         )
 
+        # New signup bootstraps its own org; the registrant becomes its owner
         slug = _generate_org_slug(organization_name)
         org = await self.orgs.create(name=organization_name, slug=slug)
         await self.orgs.create_membership(
@@ -78,6 +85,7 @@ class AuthService:
             ip_address=ip_address,
         )
 
+        # Issue tokens immediately so the user is logged in right after registering
         access_token = create_access_token(str(user.id), {"org_id": str(org.id)})
         refresh_token = create_refresh_token(str(user.id))
         await self.users.update_last_login(user.id)
@@ -96,7 +104,8 @@ class AuthService:
     ) -> tuple[AuthResponse, str]:
         user = await self.users.get_by_email(email)
 
-        # Constant-time failure path: always hash even if user not found
+        # Timing-safe: hash a dummy value even when the user doesn't exist, so the
+        # response time doesn't reveal whether the email is registered.
         if not user:
             hash_password("dummy_to_prevent_timing_attack")
             await self.audit.log(
@@ -108,7 +117,7 @@ class AuthService:
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
+                detail="Invalid email or password",  # Generic message — no account enumeration
             )
 
         if not verify_password(password, user.hashed_password):
@@ -125,17 +134,17 @@ class AuthService:
                 detail="Invalid email or password",
             )
 
-        if not user.is_active:
+        if not user.is_active:  # Correct credentials but deactivated account
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Account has been deactivated",
             )
 
-        # Re-hash if Argon2 params have changed
+        # Transparently upgrade the hash if Argon2 params have since been strengthened
         if password_needs_rehash(user.hashed_password):
             await self.users.set_password(user.id, hash_password(password))
 
-        # Get default org for token claims
+        # Embed the user's default org in the access token claims
         memberships = await self.orgs.list_user_memberships(user.id)
         default_org_id = str(memberships[0].organization_id) if memberships else None
 
@@ -159,17 +168,18 @@ class AuthService:
         ), refresh_token
 
     async def request_password_reset(self, email: str) -> str | None:
-        """Returns the reset token (for email delivery). Returns None if user not found."""
+        """Returns the reset token (for email delivery), or None if user not found."""
         user = await self.users.get_by_email(email)
         if not user:
-            return None  # Don't reveal whether email exists
+            return None  # Silently no-op — caller still returns 200 to prevent enumeration
 
         token = secrets.token_urlsafe(48)
-        expires_at = datetime.now(UTC) + timedelta(hours=1)
+        expires_at = datetime.now(UTC) + timedelta(hours=1)  # Short-lived reset window
         await self.users.set_reset_token(user.id, token, expires_at)
         return token
 
     async def reset_password(self, token: str, new_password: str) -> None:
+        # Repository only returns a user if the token matches AND hasn't expired
         user = await self.users.get_by_reset_token(token)
         if not user:
             raise HTTPException(
@@ -177,7 +187,7 @@ class AuthService:
                 detail="Invalid or expired reset token",
             )
         hashed = hash_password(new_password)
-        await self.users.set_password(user.id, hashed)
+        await self.users.set_password(user.id, hashed)  # Also clears the used reset token
         await self.audit.log(
             action="user.password_reset",
             actor_id=user.id,
@@ -189,6 +199,7 @@ class AuthService:
         self, user_id: UUID, current_password: str, new_password: str
     ) -> None:
         user = await self.users.get_by_id(user_id)
+        # Require the current password — prevents hijacked-session password takeover
         if not user or not verify_password(current_password, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

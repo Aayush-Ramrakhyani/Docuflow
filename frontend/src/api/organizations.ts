@@ -1,3 +1,8 @@
+/**
+ * Organizations & members API client.
+ * Covers the current user's orgs, org details, and member management.
+ */
+
 import { apiClient } from "./client";
 
 export interface Organization {

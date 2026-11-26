@@ -1,7 +1,16 @@
+/**
+ * Button primitive (Arctic Precision design system).
+ *
+ * Variants/sizes are defined with CVA. `asChild` renders the styles onto a child
+ * element (e.g. a router Link) via Radix Slot; `loading` shows a spinner and
+ * disables the button to prevent double-submits.
+ */
+
 import { type VariantProps, cva } from "class-variance-authority";
 import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
 
+// Tailwind class recipes for every variant + size combination
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50",
   {

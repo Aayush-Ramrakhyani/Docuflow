@@ -1,3 +1,11 @@
+/**
+ * Registration page.
+ *
+ * Creates the user AND their first organization in one step (the registrant
+ * becomes its owner, server-side). The Zod schema mirrors the backend password
+ * policy so the user gets instant feedback before submitting.
+ */
+
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -39,11 +47,12 @@ export function RegisterPage() {
   const registerMutation = useMutation({
     mutationFn: (data: FormData) => authApi.register(data),
     onSuccess: async (res) => {
+      // Registration returns tokens immediately — log the user straight in
       setAuth(res.data.user, res.data.access_token);
       const { organizationsApi } = await import("@/api/organizations");
       const orgsRes = await organizationsApi.listMine();
       if (orgsRes.data.length > 0) {
-        setCurrentOrg(orgsRes.data[0].id);
+        setCurrentOrg(orgsRes.data[0].id);  // Default into the org just created
       }
       navigate("/dashboard");
     },

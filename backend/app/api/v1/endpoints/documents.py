@@ -1,4 +1,10 @@
-"""Document upload, listing, detail, download, and deletion endpoints."""
+"""
+Document endpoints: upload, list, detail, download URL, delete.
+
+Upload is rate-limited and delegates all validation/authorization to
+DocumentService. Downloads never stream bytes through the API — they return a
+short-lived signed URL so the client fetches straight from object storage.
+"""
 
 from typing import Annotated
 from uuid import UUID
@@ -34,13 +40,14 @@ async def upload_document(
 ):
     current_user, _ = auth
     svc = DocumentService(db)
+    # Service validates the file, stores it, and queues async processing
     doc, job_id = await svc.upload(
         file=file,
         organization_id=organization_id,
         uploader_id=current_user.id,
-        ip_address=request.client.host if request.client else None,
+        ip_address=request.client.host if request.client else None,  # For the audit log
     )
-    return DocumentUploadResponse(document=doc, job_id=job_id)
+    return DocumentUploadResponse(document=doc, job_id=job_id)  # job_id lets the client poll status
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -104,7 +111,7 @@ async def delete_document(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     current_user, membership = auth
-    # Only admins/owners can delete documents
+    # Deletion is privileged — enforced server-side, never trusting the UI to hide the button
     if membership.role not in ("admin", "owner"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

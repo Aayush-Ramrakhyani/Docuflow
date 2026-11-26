@@ -38,7 +38,12 @@ class AuditLog(TimestampedModel):
     resource_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     # Additional context (IP, user agent, changed fields, etc.)
-    metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    # NOTE: the Python attribute is `event_metadata` because `metadata` is a
+    # reserved name on SQLAlchemy's declarative Base. The first positional arg
+    # keeps the actual DB column named "metadata", so no migration change is needed.
+    event_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict
+    )
 
     # Outcome
     success: Mapped[bool] = mapped_column(nullable=False, default=True)
